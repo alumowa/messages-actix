@@ -73,6 +73,12 @@ struct IndexResponse {
   messages: Vec<String>,
 }
 
+#[derive(Serialize)]
+struct TimeResponse {
+  rfc2822: String,
+  timestamp: i64
+}
+
 #[get("/")]
 fn index(state: web::Data<AppState>) -> Result<web::Json<IndexResponse>> {
 
@@ -99,12 +105,6 @@ fn post_message(msg: web::Json<PostInput>, state: web::Data<AppState>) -> Result
     request_count,
     message: msg.message.clone()
   }))
-}
-
-#[derive(Serialize)]
-struct TimeResponse {
-  rfc2822: String,
-  timestamp: i64
 }
 
 #[get("/now")]
