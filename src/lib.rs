@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate actix_web;
-use actix_web::{middleware, web, App, HttpRequest, HttpServer, Result};
+use actix_web::{
+  error::{Error, InternalError, JsonPayloadError},
+  middleware, web, App, HttpRequest, HttpResponse, HttpServer, Result
+};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -44,7 +47,10 @@ impl MessageApp {
         .service(clear)
         .service(
           web::resource("/send")
-          .data(web::JsonConfig::default().limit(4096))
+          .data(web::JsonConfig::default()
+            .limit(4096)
+            .error_handler(post_error),
+          )
           .route(web::post().to(post_message))
         )
     })
@@ -77,6 +83,13 @@ struct IndexResponse {
 struct TimeResponse {
   rfc2822: String,
   timestamp: i64
+}
+
+#[derive(Serialize)]
+struct PostError {
+  server_id: usize,
+  request_count: usize,
+  error: String
 }
 
 #[get("/")]
@@ -130,4 +143,17 @@ fn clear(state: web::Data<AppState>) -> Result<web::Json<IndexResponse>> {
     request_count,
     messages: ms.clone(),
   }))
+}
+
+fn post_error(err: JsonPayloadError, req: &HttpRequest) -> Error {
+  let extensions = req.extensions();
+  let state = extensions.get::<web::Data<AppState>>().unwrap();
+  let request_count = state.request_count.get() + 1;
+  state.request_count.set(request_count);
+  let post_error = PostError {
+    server_id: state.server_id,
+    request_count,
+    error: format!("{}", err),
+  };
+  InternalError::from_response(err, HttpResponse::BadRequest().json(post_error)).into()
 }
