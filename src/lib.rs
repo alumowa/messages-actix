@@ -54,6 +54,13 @@ struct TimeResponse {
   timestamp: i64
 }
 
+#[derive(Serialize)]
+struct LookupResponse {
+  server_id: usize,
+  request_count: usize,
+  result: Option<String>,
+}
+
 #[get("/")]
 fn index(state: web::Data<AppState>) -> Result<web::Json<IndexResponse>> {
 
@@ -119,6 +126,19 @@ fn post_error(err: JsonPayloadError, req: &HttpRequest) -> Error {
   InternalError::from_response(err, HttpResponse::BadRequest().json(post_error)).into()
 }
 
+#[get("/lookup/{idx}")]
+fn lookup(state: web::Data<AppState>, idx: web::Path<usize>) -> Result<web::Json<LookupResponse>> {
+  let request_count = state.request_count.get() + 1;
+  state.request_count.set(request_count);
+  let ms = state.messages.lock().unwrap();
+  let result = ms.get(idx.into_inner()).cloned();
+  Ok(web::Json(LookupResponse {
+    server_id: state.server_id,
+    request_count,
+    result,
+  }))
+}
+
 pub struct MessageApp {
   port: u16,
 }
@@ -140,9 +160,6 @@ impl MessageApp {
           messages: messages.clone()
         })
         .wrap(middleware::Logger::new(LOG_FORMAT))
-        .service(index)
-        .service(time)
-        .service(clear)
         .service(
           web::resource("/send")
             .data(web::JsonConfig::default()
@@ -151,6 +168,10 @@ impl MessageApp {
             )
             .route(web::post().to(post_message))
         )
+        .service(index)
+        .service(time)
+        .service(clear)
+        .service(lookup)
     })
     .bind(("127.0.0.1", self.port))?
     .workers(8)
