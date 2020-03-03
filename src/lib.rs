@@ -146,8 +146,7 @@ fn clear(state: web::Data<AppState>) -> Result<web::Json<IndexResponse>> {
 }
 
 fn post_error(err: JsonPayloadError, req: &HttpRequest) -> Error {
-  let extensions = req.extensions();
-  let state = extensions.get::<web::Data<AppState>>().unwrap();
+  let state = req.app_data::<AppState>().unwrap();
   let request_count = state.request_count.get() + 1;
   state.request_count.set(request_count);
   let post_error = PostError {
