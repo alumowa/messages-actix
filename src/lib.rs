@@ -13,6 +13,8 @@ use serde::{Serialize, Deserialize};
 extern crate chrono;
 use chrono::{DateTime, Utc};
 
+const LOG_FORMAT: &'static str = r#""%r %s %b "%{User-Agent}i" %D"#;
+
 static SERVER_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 struct AppState {
@@ -41,17 +43,17 @@ impl MessageApp {
           request_count: Cell::new(0),
           messages: messages.clone()
         })
-        .wrap(middleware::Logger::default())
+        .wrap(middleware::Logger::new(LOG_FORMAT))
         .service(index)
         .service(time)
         .service(clear)
         .service(
           web::resource("/send")
-          .data(web::JsonConfig::default()
-            .limit(4096)
-            .error_handler(post_error),
-          )
-          .route(web::post().to(post_message))
+            .data(web::JsonConfig::default()
+              .limit(4096)
+              .error_handler(post_error),
+            )
+            .route(web::post().to(post_message))
         )
     })
     .bind(("127.0.0.1", self.port))?
