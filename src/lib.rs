@@ -14,52 +14,12 @@ extern crate chrono;
 use chrono::{DateTime, Utc};
 
 const LOG_FORMAT: &'static str = r#""%r %s %b "%{User-Agent}i" %D"#;
-
 static SERVER_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 struct AppState {
   server_id: usize,
   request_count: Cell<usize>,
   messages: Arc<Mutex<Vec<String>>>,
-}
-
-pub struct MessageApp {
-  port: u16,
-}
-
-impl MessageApp {
-
-  pub fn new(port: u16) -> Self {
-    MessageApp { port }
-  }
-
-  pub fn run(&self) -> std::io::Result<()> {
-    println!("Starting http server: 127.0.0.1:{}", self.port);
-    let messages = Arc::new(Mutex::new(vec![]));
-    HttpServer::new(move || {
-      App::new()
-        .data(AppState {
-          server_id: SERVER_COUNTER.fetch_add(1, Ordering::SeqCst),
-          request_count: Cell::new(0),
-          messages: messages.clone()
-        })
-        .wrap(middleware::Logger::new(LOG_FORMAT))
-        .service(index)
-        .service(time)
-        .service(clear)
-        .service(
-          web::resource("/send")
-            .data(web::JsonConfig::default()
-              .limit(4096)
-              .error_handler(post_error),
-            )
-            .route(web::post().to(post_message))
-        )
-    })
-    .bind(("127.0.0.1", self.port))?
-    .workers(8)
-    .run()
-  }
 }
 
 #[derive(Deserialize)]
@@ -75,6 +35,13 @@ struct PostResponse {
 }
 
 #[derive(Serialize)]
+struct PostError {
+  server_id: usize,
+  request_count: usize,
+  error: String
+}
+
+#[derive(Serialize)]
 struct IndexResponse {
   server_id: usize,
   request_count: usize,
@@ -85,13 +52,6 @@ struct IndexResponse {
 struct TimeResponse {
   rfc2822: String,
   timestamp: i64
-}
-
-#[derive(Serialize)]
-struct PostError {
-  server_id: usize,
-  request_count: usize,
-  error: String
 }
 
 #[get("/")]
@@ -157,4 +117,43 @@ fn post_error(err: JsonPayloadError, req: &HttpRequest) -> Error {
     error: format!("{}", err),
   };
   InternalError::from_response(err, HttpResponse::BadRequest().json(post_error)).into()
+}
+
+pub struct MessageApp {
+  port: u16,
+}
+
+impl MessageApp {
+
+  pub fn new(port: u16) -> Self {
+    MessageApp { port }
+  }
+
+  pub fn run(&self) -> std::io::Result<()> {
+    println!("Starting http server: 127.0.0.1:{}", self.port);
+    let messages = Arc::new(Mutex::new(vec![]));
+    HttpServer::new(move || {
+      App::new()
+        .data(AppState {
+          server_id: SERVER_COUNTER.fetch_add(1, Ordering::SeqCst),
+          request_count: Cell::new(0),
+          messages: messages.clone()
+        })
+        .wrap(middleware::Logger::new(LOG_FORMAT))
+        .service(index)
+        .service(time)
+        .service(clear)
+        .service(
+          web::resource("/send")
+            .data(web::JsonConfig::default()
+              .limit(4096)
+              .error_handler(post_error),
+            )
+            .route(web::post().to(post_message))
+        )
+    })
+    .bind(("127.0.0.1", self.port))?
+    .workers(8)
+    .run()
+  }
 }
